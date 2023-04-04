@@ -53,3 +53,31 @@ export const getMyCommits = async (): Promise<CommitMap[]> => {
   }
   return commitMaps;
 };
+
+export const getOrgCommits = async (org: string): Promise<CommitMap[]> => {
+  const repos = await getOrgRepos(org);
+  console.log(`[DEBUG] Found ${repos.length} repos for org ${org}`);
+  const commitMaps: CommitMap[] = [];
+  for (let i = 0; i < repos.length; i++) {
+    const repo = repos[i];
+    const commits = await client.paginate<Commit>(
+      "GET /repos/{owner}/{repo}/commits",
+      {
+        owner: repo.owner.login,
+        repo: repo.name,
+        per_page: 100,
+        headers: {
+          "X-GitHub-Api-Version": "2022-11-28",
+        },
+      }
+    );
+    console.log(
+      `[DEBUG] Found ${commits.length} commits for repo ${repo.owner.login}/${repo.name}`
+    );
+    commitMaps.push({
+      repo_id: repo.name,
+      commits: commits,
+    } as CommitMap);
+  }
+  return commitMaps;
+};
