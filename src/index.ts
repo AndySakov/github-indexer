@@ -1,3 +1,11 @@
-import { getMyRepos } from "./api/helpers";
+import { getMyCommits } from "./api/helpers";
 
-getMyRepos(1).then((res) => console.log(res));
+getMyCommits().then((res) => {
+  console.log("Total: " + res.length);
+  console.log(
+    "Avg Number of Commits: " +
+      res.reduce((avg, value, _, { length }) => {
+        return avg + value.commits.length / length;
+      }, 0)
+  );
+});

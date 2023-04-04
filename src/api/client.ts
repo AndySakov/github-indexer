@@ -1,11 +1,7 @@
-import axios from "axios";
 import * as dotenv from "dotenv";
+import { Octokit } from "octokit";
 dotenv.config();
 
-export const client = axios.create({
-  baseURL: "https://api.github.com",
-  headers: {
-    Authorization: `Bearer ${process.env.GITHUB_PAT}`,
-    Accept: "application/vnd.github+json",
-  },
-});
+const octokit = new Octokit({ auth: process.env.GITHUB_PAT });
+
+export const client = octokit;
