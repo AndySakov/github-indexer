@@ -82,3 +82,16 @@ export const getOrgCommits = async (org: string): Promise<CommitMap[]> => {
   }
   return commitMaps;
 };
+
+export const getMyOrgAssociation = async (org: string): Promise<string> => {
+  const res = await client.rest.orgs
+    .getMembershipForAuthenticatedUser({
+      org: org,
+    })
+    .catch(() => ({
+      data: {
+        state: "N/A",
+      },
+    }));
+  return res.data.state;
+};

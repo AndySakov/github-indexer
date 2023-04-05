@@ -1,4 +1,8 @@
-import { getMyCommits, getOrgCommits } from "./api/helpers";
+import {
+  getMyCommits,
+  getMyOrgAssociation,
+  getOrgCommits,
+} from "./api/helpers";
 
 getMyCommits().then((res) => {
   console.log("|GET USER COMMITS DEMO|");
@@ -21,3 +25,5 @@ getOrgCommits("zio").then((res) => {
       }, 0)
   );
 });
+
+getMyOrgAssociation("RecruitersRip").then((res) => console.log(res));
