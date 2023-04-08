@@ -1,3 +1,5 @@
 .env
 node_modules
 dist
+screenshots
+profile-data-dump.json

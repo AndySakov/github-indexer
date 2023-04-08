@@ -179,6 +179,21 @@ export interface CommitMap {
   commits: Commit[];
 }
 
+export interface ContribMap {
+  year: number;
+  month: string | null | undefined;
+  contributions: Contribution[];
+}
+
+export interface Contribution {
+  summary: string;
+  metadata: ContribMetadata[];
+}
+
+export interface ContribMetadata {
+  parsed: string;
+  raw: string;
+}
 export interface User {
   login: string;
   id: number;
@@ -227,3 +242,34 @@ export interface Plan {
   private_repos: number;
   collaborators: number;
 }
+
+export type EventResponse = {
+  id: string;
+  type: string | null;
+  actor: {
+    id: number;
+    login: string;
+    display_login?: string | undefined;
+    gravatar_id: string | null;
+    url: string;
+    avatar_url: string;
+  };
+  repo: {
+    id: number;
+    name: string;
+    url: string;
+  };
+  org?:
+    | {
+        id: number;
+        login: string;
+        display_login?: string | undefined;
+        gravatar_id: string | null;
+        url: string;
+        avatar_url: string;
+      }
+    | undefined;
+  payload: any;
+  public: boolean;
+  created_at: string | null;
+};

@@ -1,5 +1,5 @@
 import { client } from "./client";
-import { Commit, CommitMap, Repository, User } from "./types";
+import { Commit, CommitMap, EventResponse, Repository, User } from "./types";
 
 export const getMyAccount = async (): Promise<User> => {
   return (await client.rest.users.getAuthenticated()).data as User;
@@ -94,4 +94,18 @@ export const getMyOrgAssociation = async (org: string): Promise<string> => {
       },
     }));
   return res.data.state;
+};
+
+export const getMyEvents = async (): Promise<EventResponse[]> => {
+  const data = await client.paginate<EventResponse>(
+    "GET /users/{username}/events",
+    {
+      username: "AndySakov",
+      per_page: 100,
+      headers: {
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    }
+  );
+  return data;
 };
