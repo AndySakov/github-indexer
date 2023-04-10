@@ -191,9 +191,22 @@ export interface Contribution {
 }
 
 export interface ContribMetadata {
-  parsed: string;
+  repo: string;
+  owner: string;
+  action: ContribAction;
+  state?: string | null;
+  urls?: { text: string; dest: string }[] | null;
+  quantity?: number | null;
   raw: string;
 }
+
+export type ContribAction =
+  | "created-repos"
+  | "created-commits"
+  | "opened-prs"
+  | "opened-issues"
+  | "private"
+  | "unknown";
 export interface User {
   login: string;
   id: number;
