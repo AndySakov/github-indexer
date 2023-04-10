@@ -105,9 +105,9 @@ export const scrapeProfileDataForAuthenticatedUser = async (): Promise<
 
   console.log(`Found ${activityList.length} months worth of contribution data`);
   activityList.forEach((elem) => {
-    const time = elem.querySelector(
-      "h3.h6 > span.color-bg-default, h4.color-fg-default"
-    )?.textContent;
+    const time = elem
+      .querySelector("h3.h6 > span.color-bg-default, h4.color-fg-default")
+      ?.textContent?.trim();
     const monthYear = time?.split(" ");
     const month = monthYear?.[0];
     const year = Number(monthYear?.[1] ?? 0);
