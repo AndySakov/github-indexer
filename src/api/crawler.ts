@@ -1,7 +1,8 @@
-import puppeteer from "puppeteer";
 import { getMyAccount } from "./helpers";
 import { ContribAction, ContribMap, Contribution } from "./types";
 import { JSDOM } from "jsdom";
+import { eachMonthOfInterval, endOfMonth, format } from "date-fns";
+
 const parseText = (x: string | null | undefined): string | null | undefined => {
   return x
     ?.replace(/^\s*$(?:\r\n?|\n)/gm, "")
@@ -60,158 +61,148 @@ const extractRelevantQuantities = (
   );
 };
 
+const scrapeContribDataForDateRange = async (
+  login: string,
+  urlDateParam: string
+): Promise<ContribMap> => {
+  const url = `https://github.com/${login}?tab=overview&${urlDateParam}`;
+  const dom = (
+    await JSDOM.fromURL(url, {
+      referrer: "https://github.com",
+      pretendToBeVisual: true,
+      resources: "usable",
+      runScripts: "outside-only",
+    })
+  ).window.document;
+
+  const elem = dom.body.querySelector(
+    "div.contribution-activity-listing > div.width-full"
+  );
+  const time = elem
+    ?.querySelector("h3.h6 > span.color-bg-default, h4.color-fg-default")
+    ?.textContent?.trim();
+  const monthYear = time?.split(" ");
+  const month = monthYear?.[0];
+  const year = Number(monthYear?.[1] ?? 0);
+  const contribs = Array.from(
+    elem?.querySelectorAll(".TimelineItem-body") ?? []
+  );
+  const map = {
+    year: year,
+    month: month,
+    contributions: contribs.map((contrib) => {
+      const summary = contrib.querySelector(
+        "summary.btn-link.Link--muted.no-underline, div.d-flex > h4, span.f4"
+      );
+      const metadata = Array.from(
+        contrib.querySelectorAll(
+          "ul.list-style-none > li.ml-0 > div.col-8, ul.list-style-none > li > span.width-fit, ul.list-style-none > li.d-flex > span.col-8 > span.width-fit, div.Box, div.Box > div.text-center > div.mt-n3 > h4, details > div > details > summary"
+        )
+      );
+      const summaryText = parseText(summary?.textContent);
+      return {
+        summary: summaryText,
+        metadata: metadata.map((x) => {
+          const content = parseText(x?.textContent);
+          const info = content?.split("/");
+          const action = generateAction(parseText(summary?.textContent));
+          if (
+            action === "opened-prs" ||
+            action === "opened-issues" ||
+            action === "created-repos" ||
+            summaryText?.includes("comments")
+          ) {
+            const isFirst = summaryText?.includes("first");
+            const urls = isFirst
+              ? x.nextElementSibling?.getAttribute("href")
+                ? [
+                    {
+                      text: parseText(x.nextElementSibling?.textContent),
+                      dest:
+                        "https://github.com" +
+                        x.nextElementSibling?.getAttribute("href"),
+                    },
+                  ]
+                : null
+              : Array.from(
+                  x.nextElementSibling?.querySelectorAll("a") ?? []
+                ).map((child) =>
+                  child.getAttribute("href")
+                    ? {
+                        text: parseText(child.textContent),
+                        dest: "https://github.com" + child.getAttribute("href"),
+                      }
+                    : null
+                );
+            return {
+              repo: isFirst
+                ? summaryText?.split(" ").find((x) => x.split("/").length === 2)
+                : content?.split(" ")[0],
+              owner: isFirst
+                ? summaryText
+                    ?.split(" ")
+                    .find((x) => x.split("/").length === 2)
+                    ?.split("/")[0]
+                : info?.[0],
+              action: action,
+              state: generateState(content),
+              quantity: extractRelevantQuantities(content),
+              urls: urls?.filter((x) => x !== null),
+              raw: content,
+            };
+          } else {
+            const urls = Array.from(x.children).map((child) =>
+              child.getAttribute("href")
+                ? {
+                    text: parseText(child.textContent),
+                    dest: "https://github.com" + child.getAttribute("href"),
+                  }
+                : null
+            );
+            return {
+              repo: content?.split(" ")[0],
+              owner: info?.[0],
+              action: action,
+              state: generateState(content),
+              quantity: extractRelevantQuantities(content),
+              urls: urls.filter((x) => x !== null),
+              raw: content,
+            };
+          }
+        }),
+      } as Contribution;
+    }),
+  };
+  return map;
+};
+
+const generateUrlParams = (startDate: Date): string[] => {
+  const months = eachMonthOfInterval({
+    start: startDate,
+    end: new Date(),
+  })?.map((monthStart) => {
+    const from = format(monthStart, "yyyy-MM-dd");
+    const to = format(endOfMonth(monthStart), "yyyy-MM-dd");
+    return `from=${from}&to=${to}`;
+  });
+  return months;
+};
+
 export const scrapeProfileDataForAuthenticatedUser = async (): Promise<
   ContribMap[]
 > => {
   const user = await getMyAccount();
-  const url = `https://github.com/${user.login}`;
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
-  page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
-  await page.goto(url);
+  const login = user.login;
+  const createdDate = new Date(user.created_at);
+  const months = generateUrlParams(createdDate);
 
-  const contribMaps: ContribMap[] = [];
+  const maps: ContribMap[] = [];
 
-  let hasReachedBeginning = false;
-  let count = 1;
-  while (!hasReachedBeginning) {
-    const showMoreActivityClass = ".contribution-activity-show-more";
-    await page.waitForSelector(showMoreActivityClass);
-    await page
-      .waitForSelector("text/Joined GitHub", {
-        timeout: 1000,
-      })
-      .then((handle) => {
-        hasReachedBeginning = true;
-        handle?.dispose();
-      })
-      .catch(async () => {
-        await page.click(showMoreActivityClass);
-        console.log(
-          `[DEBUG] Number of Show More Activity button clicks: ${count}`
-        );
-        count += 1;
-      });
+  for (let i = 0; i < months.length; i++) {
+    const urlParams = months[i];
+    const map = await scrapeContribDataForDateRange(login, urlParams);
+    maps.push(map);
   }
 
-  const html = await page.content();
-  const dom = new JSDOM(html).window.document;
-
-  const activities = dom.querySelectorAll(
-    ".contribution-activity-listing > div.width-full"
-  );
-
-  const activityList = Array.from(activities);
-
-  console.log(`Found ${activityList.length} months worth of contribution data`);
-  activityList.forEach((elem) => {
-    const time = elem
-      .querySelector("h3.h6 > span.color-bg-default, h4.color-fg-default")
-      ?.textContent?.trim();
-    const monthYear = time?.split(" ");
-    const month = monthYear?.[0];
-    const year = Number(monthYear?.[1] ?? 0);
-    const contribs = Array.from(
-      elem?.querySelectorAll(".TimelineItem-body") ?? []
-    );
-    const map = {
-      year: year,
-      month: month,
-      contributions: contribs.map((contrib) => {
-        const summary = contrib.querySelector(
-          "summary.btn-link.Link--muted.no-underline, div.d-flex > h4, span.f4"
-        );
-        const metadata = Array.from(
-          contrib.querySelectorAll(
-            "ul.list-style-none > li.ml-0 > div.col-8, ul.list-style-none > li > span.width-fit, ul.list-style-none > li.d-flex > span.col-8 > span.width-fit, div.Box, div.Box > div.text-center > div.mt-n3 > h4, details > div > details > summary"
-          )
-        );
-        const summaryText = parseText(summary?.textContent);
-        return {
-          summary: summaryText,
-          metadata: metadata.map((x) => {
-            const content = parseText(x?.textContent);
-            const info = content?.split("/");
-            const action = generateAction(parseText(summary?.textContent));
-            if (
-              action === "opened-prs" ||
-              action === "opened-issues" ||
-              action === "created-repos" ||
-              summaryText?.includes("comments")
-            ) {
-              const isFirst = summaryText?.includes("first");
-              const urls = isFirst
-                ? x.nextElementSibling?.getAttribute("href")
-                  ? [
-                      {
-                        text: parseText(x.nextElementSibling?.textContent),
-                        dest:
-                          "https://github.com" +
-                          x.nextElementSibling?.getAttribute("href"),
-                      },
-                    ]
-                  : null
-                : Array.from(
-                    x.nextElementSibling?.querySelectorAll("a") ?? []
-                  ).map((child) =>
-                    child.getAttribute("href")
-                      ? {
-                          text: parseText(child.textContent),
-                          dest:
-                            "https://github.com" + child.getAttribute("href"),
-                        }
-                      : null
-                  );
-              return {
-                repo: isFirst
-                  ? summaryText
-                      ?.split(" ")
-                      .find((x) => x.split("/").length === 2)
-                  : content?.split(" ")[0],
-                owner: isFirst
-                  ? summaryText
-                      ?.split(" ")
-                      .find((x) => x.split("/").length === 2)
-                      ?.split("/")[0]
-                  : info?.[0],
-                action: action,
-                state: generateState(content),
-                quantity: extractRelevantQuantities(content),
-                urls: urls?.filter((x) => x !== null),
-                raw: content,
-              };
-            } else {
-              const urls = Array.from(x.children).map((child) =>
-                child.getAttribute("href")
-                  ? {
-                      text: parseText(child.textContent),
-                      dest: "https://github.com" + child.getAttribute("href"),
-                    }
-                  : null
-              );
-              return {
-                repo: content?.split(" ")[0],
-                owner: info?.[0],
-                action: action,
-                state: generateState(content),
-                quantity: extractRelevantQuantities(content),
-                urls: urls.filter((x) => x !== null),
-                raw: content,
-              };
-            }
-          }),
-        } as Contribution;
-      }),
-    };
-    contribMaps.push(map);
-  });
-
-  await page.screenshot({
-    path: `screenshots/${
-      user.login
-    }-gh-profile-page-${new Date().toISOString()}.png`,
-    fullPage: true,
-  });
-  await browser.close();
-  return contribMaps;
+  return maps;
 };

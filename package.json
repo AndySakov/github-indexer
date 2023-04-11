@@ -9,7 +9,6 @@
     "date-fns": "^2.29.3",
     "dotenv": "^16.0.3",
     "jsdom": "^21.1.1",
-    "octokit": "^2.0.14",
-    "puppeteer": "^19.8.5"
+    "octokit": "^2.0.14"
   }
 }
